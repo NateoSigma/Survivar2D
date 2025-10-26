@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
-  <title>Minecraft 3D Demo</title>
+  <title>Minecraft 3D - Xbox & PC</title>
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { display: block; }
@@ -19,32 +19,25 @@
   </style>
 </head>
 <body>
-  <div id="info">Kliknij, aby zablokować kursor. W/S/A/D – ruch.</div>
+  <div id="info">Kliknij, by zablokować kursor. W/S/A/D – ruch. Xbox pad: lewy/prawy drążek.</div>
 
   <!-- biblioteka Three.js -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/PointerLockControls.js"></script>
 
   <script>
-    // --- SCENA ---
+    // --- SCENA I KAMERA ---
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb); // niebieskie niebo
+    scene.background = new THREE.Color(0x87ceeb);
 
-    // --- KAMERA ---
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 2, 5);
 
-    // --- RENDERER ---
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // --- ŚWIATŁA ---
+    // --- ŚWIATŁO ---
     const ambient = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambient);
     const sun = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -58,25 +51,18 @@
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
 
-    // --- KILKA BLOKÓW ---
+    // --- BLOKI ---
     const blockGeo = new THREE.BoxGeometry(1, 1, 1);
     const blockMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
     for (let i = 0; i < 30; i++) {
       const block = new THREE.Mesh(blockGeo, blockMat);
-      block.position.set(
-        Math.random() * 40 - 20,
-        0.5,
-        Math.random() * 40 - 20
-      );
+      block.position.set(Math.random() * 40 - 20, 0.5, Math.random() * 40 - 20);
       scene.add(block);
     }
 
-    // --- KONTROLER RUCHU (Pointer Lock) ---
+    // --- KONTROLER ---
     const controls = new THREE.PointerLockControls(camera, document.body);
-
-    document.body.addEventListener('click', () => {
-      controls.lock();
-    });
+    document.body.addEventListener('click', () => controls.lock());
 
     // --- RUCH ---
     const move = { forward: false, backward: false, left: false, right: false };
@@ -95,10 +81,44 @@
       if (e.code === 'KeyD') move.right = false;
     });
 
-    // --- ANIMACJA ---
+    // --- PAD XBOX ---
+    let gamepadConnected = false;
+    window.addEventListener("gamepadconnected", (e) => {
+      console.log("Pad podłączony:", e.gamepad.id);
+      gamepadConnected = true;
+    });
+
+    function handleGamepad() {
+      const gamepads = navigator.getGamepads();
+      const gp = gamepads[0];
+      if (!gp) return;
+
+      // Lewy drążek: ruch
+      const moveX = gp.axes[0]; // lewo/prawo
+      const moveY = gp.axes[1]; // przód/tył
+
+      // Prawy drążek: obrót kamery
+      const lookX = gp.axes[2];
+      const lookY = gp.axes[3];
+
+      const moveSpeed = 0.15;
+      const lookSpeed = 0.03;
+
+      // Ruch
+      controls.moveRight(moveX * moveSpeed);
+      controls.moveForward(-moveY * moveSpeed);
+
+      // Obracanie kamery
+      camera.rotation.y -= lookX * lookSpeed;
+      camera.rotation.x -= lookY * lookSpeed;
+      camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+    }
+
+    // --- PĘTLA RENDEROWANIA ---
     function animate() {
       requestAnimationFrame(animate);
 
+      // Ruch klawiatury
       if (controls.isLocked) {
         if (move.forward) controls.moveForward(speed);
         if (move.backward) controls.moveForward(-speed);
@@ -106,12 +126,14 @@
         if (move.right) controls.moveRight(speed);
       }
 
+      // Ruch padem
+      if (gamepadConnected) handleGamepad();
+
       renderer.render(scene, camera);
     }
 
     animate();
 
-    // --- RESPONSYWNOŚĆ ---
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
