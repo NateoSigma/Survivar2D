@@ -2,89 +2,202 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>Minecraft 2D Demo</title>
+<title>Minecraft 2D - Zbieranie</title>
 <style>
   body { margin: 0; overflow: hidden; background: #87ceeb; }
-  canvas { display: block; }
+  canvas { display: block; cursor: crosshair; }
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-family: monospace;
+  }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="hud">💼 Ekwipunek: <span id="inventory">{} </span></div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// --- Świat ---
-const groundHeight = 100;
-const player = { x: 100, y: canvas.height - groundHeight - 50, w: 40, h: 50, color: "#ffcc00", speed: 5, vy: 0, onGround: false };
-const gravity = 0.8;
+const invText = document.getElementById("inventory");
 
-// --- Klawisze ---
+// --- KONFIGURACJA ---
+const TILE_SIZE = 40;
+const WORLD_WIDTH = 50;
+const WORLD_HEIGHT = 20;
+const GROUND_LEVEL = 14;
+
+// --- ŚWIAT ---
+const world = [];
+for (let y = 0; y < WORLD_HEIGHT; y++) {
+  const row = [];
+  for (let x = 0; x < WORLD_WIDTH; x++) {
+    if (y > GROUND_LEVEL) row.push("stone");
+    else if (y === GROUND_LEVEL) row.push("dirt");
+    else if (y === GROUND_LEVEL - 1) row.push("grass");
+    else row.push(null);
+  }
+  world.push(row);
+}
+
+// --- GRACZ ---
+const player = { x: 5, y: 5, w: 0.8, h: 1.8, vx: 0, vy: 0, onGround: false };
 const keys = {};
 document.addEventListener("keydown", e => keys[e.code] = true);
 document.addEventListener("keyup", e => keys[e.code] = false);
 
-// --- Rysowanie świata ---
-function drawBackground() {
-  // niebo
+// --- EKWIPUNEK ---
+const inventory = { dirt: 0, stone: 0, grass: 0 };
+function updateInventoryHUD() {
+  invText.textContent = JSON.stringify(inventory);
+}
+
+// --- FIZYKA ---
+const gravity = 0.5;
+const moveSpeed = 0.3;
+const jumpPower = 10;
+
+// --- RYSOWANIE BLOKÓW ---
+function drawBlock(x, y, type) {
+  if (!type) return;
+  let color = "#654321";
+  if (type === "grass") color = "#00aa00";
+  if (type === "stone") color = "#777777";
+  const px = x * TILE_SIZE - camera.x;
+  const py = y * TILE_SIZE - camera.y;
+  ctx.fillStyle = color;
+  ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+  ctx.strokeStyle = "#00000022";
+  ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+}
+
+// --- KAMERA ---
+const camera = { x: 0, y: 0 };
+
+// --- KOLIZJE ---
+function getTileAt(x, y) {
+  const tx = Math.floor(x);
+  const ty = Math.floor(y);
+  if (tx < 0 || ty < 0 || tx >= WORLD_WIDTH || ty >= WORLD_HEIGHT) return "stone"; // granice
+  return world[ty][tx];
+}
+
+function collide() {
+  player.onGround = false;
+  player.vy += gravity;
+  player.y += player.vy * 0.1;
+
+  if (getTileAt(player.x, player.y + player.h)) {
+    player.y = Math.floor(player.y + player.h) - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  }
+
+  player.x += player.vx * 0.1;
+  if (getTileAt(player.x, player.y) || getTileAt(player.x, player.y + player.h * 0.5)) {
+    player.x -= player.vx * 0.1;
+    player.vx = 0;
+  }
+}
+
+// --- RUCH ---
+function update() {
+  if (keys["KeyA"] || keys["ArrowLeft"]) player.vx = -moveSpeed;
+  else if (keys["KeyD"] || keys["ArrowRight"]) player.vx = moveSpeed;
+  else player.vx = 0;
+
+  if ((keys["Space"] || keys["ArrowUp"]) && player.onGround) {
+    player.vy = -jumpPower;
+    player.onGround = false;
+  }
+
+  collide();
+
+  camera.x = player.x * TILE_SIZE - canvas.width / 2 + (player.w * TILE_SIZE) / 2;
+  camera.y = player.y * TILE_SIZE - canvas.height / 2;
+}
+
+// --- NISZCZENIE I STAWIANIE BLOKÓW ---
+canvas.addEventListener("mousedown", e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left + camera.x) / TILE_SIZE;
+  const my = (e.clientY - rect.top + camera.y) / TILE_SIZE;
+  const tx = Math.floor(mx);
+  const ty = Math.floor(my);
+
+  if (tx < 0 || ty < 0 || tx >= WORLD_WIDTH || ty >= WORLD_HEIGHT) return;
+
+  if (e.button === 0) { 
+    // NISZCZENIE
+    const block = world[ty][tx];
+    if (block) {
+      inventory[block] = (inventory[block] || 0) + 1;
+      world[ty][tx] = null;
+      updateInventoryHUD();
+    }
+  }
+
+  if (e.button === 2) { 
+    // STAWIANIE
+    if (!world[ty][tx]) {
+      let typeToPlace = null;
+      if (inventory.dirt > 0) typeToPlace = "dirt";
+      else if (inventory.stone > 0) typeToPlace = "stone";
+      else if (inventory.grass > 0) typeToPlace = "grass";
+      if (typeToPlace) {
+        world[ty][tx] = typeToPlace;
+        inventory[typeToPlace]--;
+        updateInventoryHUD();
+      }
+    }
+  }
+});
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+// --- RYSOWANIE ---
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // tło
   ctx.fillStyle = "#87ceeb";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // trawa
-  ctx.fillStyle = "#00aa00";
-  ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
-}
-
-function drawPlayer() {
-  ctx.fillStyle = player.color;
-  ctx.fillRect(player.x, player.y, player.w, player.h);
-}
-
-// --- Logika ruchu ---
-function update() {
-  // poziomy ruch
-  if (keys["ArrowLeft"] || keys["KeyA"]) player.x -= player.speed;
-  if (keys["ArrowRight"] || keys["KeyD"]) player.x += player.speed;
-
-  // grawitacja
-  player.vy += gravity;
-  player.y += player.vy;
-
-  // podłoże
-  if (player.y + player.h > canvas.height - groundHeight) {
-    player.y = canvas.height - groundHeight - player.h;
-    player.vy = 0;
-    player.onGround = true;
-  } else {
-    player.onGround = false;
+  // świat
+  for (let y = 0; y < WORLD_HEIGHT; y++) {
+    for (let x = 0; x < WORLD_WIDTH; x++) {
+      drawBlock(x, y, world[y][x]);
+    }
   }
 
-  // skok
-  if ((keys["ArrowUp"] || keys["Space"]) && player.onGround) {
-    player.vy = -15;
-    player.onGround = false;
-  }
+  // gracz
+  const px = player.x * TILE_SIZE - camera.x;
+  const py = player.y * TILE_SIZE - camera.y;
+  ctx.fillStyle = "#ffcc00";
+  ctx.fillRect(px, py, player.w * TILE_SIZE, player.h * TILE_SIZE);
 }
 
-// --- Główna pętla ---
+// --- PĘTLA ---
 function loop() {
   update();
-  drawBackground();
-  drawPlayer();
+  draw();
   requestAnimationFrame(loop);
 }
-
 loop();
 
-// --- Dopasowanie rozmiaru ---
 window.addEventListener("resize", () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 });
+updateInventoryHUD();
 </script>
 </body>
 </html>
