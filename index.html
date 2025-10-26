@@ -1,144 +1,90 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8">
-  <title>Minecraft 3D - Xbox & PC</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-    canvas { display: block; }
-    #info {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      background: rgba(0,0,0,0.4);
-      padding: 6px 10px;
-      border-radius: 8px;
-      font-family: sans-serif;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Minecraft 2D Demo</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #87ceeb; }
+  canvas { display: block; }
+</style>
 </head>
 <body>
-  <div id="info">Kliknij, by zablokować kursor. W/S/A/D – ruch. Xbox pad: lewy/prawy drążek.</div>
+<canvas id="game"></canvas>
 
-  <!-- biblioteka Three.js -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/PointerLockControls.js"></script>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-  <script>
-    // --- SCENA I KAMERA ---
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb);
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 2, 5);
+// --- Świat ---
+const groundHeight = 100;
+const player = { x: 100, y: canvas.height - groundHeight - 50, w: 40, h: 50, color: "#ffcc00", speed: 5, vy: 0, onGround: false };
+const gravity = 0.8;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+// --- Klawisze ---
+const keys = {};
+document.addEventListener("keydown", e => keys[e.code] = true);
+document.addEventListener("keyup", e => keys[e.code] = false);
 
-    // --- ŚWIATŁO ---
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(10, 20, 10);
-    scene.add(sun);
+// --- Rysowanie świata ---
+function drawBackground() {
+  // niebo
+  ctx.fillStyle = "#87ceeb";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // --- TRAWIASTY TEREN ---
-    const groundGeo = new THREE.PlaneGeometry(200, 200);
-    const groundMat = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    scene.add(ground);
+  // trawa
+  ctx.fillStyle = "#00aa00";
+  ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+}
 
-    // --- BLOKI ---
-    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
-    const blockMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-    for (let i = 0; i < 30; i++) {
-      const block = new THREE.Mesh(blockGeo, blockMat);
-      block.position.set(Math.random() * 40 - 20, 0.5, Math.random() * 40 - 20);
-      scene.add(block);
-    }
+function drawPlayer() {
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+}
 
-    // --- KONTROLER ---
-    const controls = new THREE.PointerLockControls(camera, document.body);
-    document.body.addEventListener('click', () => controls.lock());
+// --- Logika ruchu ---
+function update() {
+  // poziomy ruch
+  if (keys["ArrowLeft"] || keys["KeyA"]) player.x -= player.speed;
+  if (keys["ArrowRight"] || keys["KeyD"]) player.x += player.speed;
 
-    // --- RUCH ---
-    const move = { forward: false, backward: false, left: false, right: false };
-    const speed = 0.15;
+  // grawitacja
+  player.vy += gravity;
+  player.y += player.vy;
 
-    document.addEventListener('keydown', e => {
-      if (e.code === 'KeyW') move.forward = true;
-      if (e.code === 'KeyS') move.backward = true;
-      if (e.code === 'KeyA') move.left = true;
-      if (e.code === 'KeyD') move.right = true;
-    });
-    document.addEventListener('keyup', e => {
-      if (e.code === 'KeyW') move.forward = false;
-      if (e.code === 'KeyS') move.backward = false;
-      if (e.code === 'KeyA') move.left = false;
-      if (e.code === 'KeyD') move.right = false;
-    });
+  // podłoże
+  if (player.y + player.h > canvas.height - groundHeight) {
+    player.y = canvas.height - groundHeight - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  } else {
+    player.onGround = false;
+  }
 
-    // --- PAD XBOX ---
-    let gamepadConnected = false;
-    window.addEventListener("gamepadconnected", (e) => {
-      console.log("Pad podłączony:", e.gamepad.id);
-      gamepadConnected = true;
-    });
+  // skok
+  if ((keys["ArrowUp"] || keys["Space"]) && player.onGround) {
+    player.vy = -15;
+    player.onGround = false;
+  }
+}
 
-    function handleGamepad() {
-      const gamepads = navigator.getGamepads();
-      const gp = gamepads[0];
-      if (!gp) return;
+// --- Główna pętla ---
+function loop() {
+  update();
+  drawBackground();
+  drawPlayer();
+  requestAnimationFrame(loop);
+}
 
-      // Lewy drążek: ruch
-      const moveX = gp.axes[0]; // lewo/prawo
-      const moveY = gp.axes[1]; // przód/tył
+loop();
 
-      // Prawy drążek: obrót kamery
-      const lookX = gp.axes[2];
-      const lookY = gp.axes[3];
-
-      const moveSpeed = 0.15;
-      const lookSpeed = 0.03;
-
-      // Ruch
-      controls.moveRight(moveX * moveSpeed);
-      controls.moveForward(-moveY * moveSpeed);
-
-      // Obracanie kamery
-      camera.rotation.y -= lookX * lookSpeed;
-      camera.rotation.x -= lookY * lookSpeed;
-      camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-    }
-
-    // --- PĘTLA RENDEROWANIA ---
-    function animate() {
-      requestAnimationFrame(animate);
-
-      // Ruch klawiatury
-      if (controls.isLocked) {
-        if (move.forward) controls.moveForward(speed);
-        if (move.backward) controls.moveForward(-speed);
-        if (move.left) controls.moveRight(-speed);
-        if (move.right) controls.moveRight(speed);
-      }
-
-      // Ruch padem
-      if (gamepadConnected) handleGamepad();
-
-      renderer.render(scene, camera);
-    }
-
-    animate();
-
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-  </script>
+// --- Dopasowanie rozmiaru ---
+window.addEventListener("resize", () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+</script>
 </body>
 </html>
