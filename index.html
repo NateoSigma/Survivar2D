@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>Minecraft 2D - Nieskończony świat</title>
+<title>Minecraft 2D - Poprawiona wersja</title>
 <style>
   body { margin: 0; overflow: hidden; background: #87ceeb; }
   canvas { display: block; cursor: crosshair; }
@@ -31,7 +31,7 @@ const invText = document.getElementById("inventory");
 
 // --- Stałe ---
 const TILE_SIZE = 40;
-const CHUNK_SIZE = 32; // szerokość jednego "chunka"
+const CHUNK_SIZE = 32;
 const WORLD_HEIGHT = 40;
 const SEA_LEVEL = 20;
 const CAMERA_MARGIN = 6;
@@ -39,7 +39,7 @@ const gravity = 0.5;
 
 // --- Gracz ---
 const player = { x: 0, y: 0, w: 0.8, h: 1.8, vx: 0, vy: 0, onGround: false };
-const moveSpeed = 0.3;
+const moveSpeed = 0.45; // nieco szybciej
 const jumpPower = 10;
 const keys = {};
 document.addEventListener("keydown", e => keys[e.code] = true);
@@ -52,7 +52,7 @@ function updateInventoryHUD() {
 }
 updateInventoryHUD();
 
-// --- Generator mapy (prosty perlin-like) ---
+// --- Generator mapy (z trawą na górze) ---
 function pseudoNoise(x) {
   return Math.sin(x * 0.1) * 3 + Math.sin(x * 0.03) * 7;
 }
@@ -64,16 +64,17 @@ function generateChunk(chunkX) {
     for (let x = 0; x < CHUNK_SIZE; x++) {
       const worldX = chunkX * CHUNK_SIZE + x;
       const height = SEA_LEVEL + Math.floor(pseudoNoise(worldX));
-      if (y > height) chunk[y][x] = "stone";
-      else if (y === height) chunk[y][x] = "grass";
-      else if (y > height - 3) chunk[y][x] = "dirt";
+
+      if (y > height) chunk[y][x] = "stone"; // głęboko kamień
+      else if (y === height) chunk[y][x] = "dirt"; // ziemia
+      else if (y === height - 1) chunk[y][x] = "grass"; // trawa NAD ziemią
       else chunk[y][x] = null;
     }
   }
   return chunk;
 }
 
-// --- Pamięć świata ---
+// --- Świat / Chunks ---
 const chunks = new Map();
 function getChunk(cx) {
   if (!chunks.has(cx)) chunks.set(cx, generateChunk(cx));
@@ -105,16 +106,15 @@ function collide() {
   player.vy += gravity;
   player.y += player.vy * 0.1;
 
-  // pionowo
   if (getBlock(Math.floor(player.x), Math.floor(player.y + player.h))) {
     player.y = Math.floor(player.y + player.h) - player.h;
     player.vy = 0;
     player.onGround = true;
   }
 
-  // poziomo
   player.x += player.vx * 0.1;
-  if (getBlock(Math.floor(player.x), Math.floor(player.y)) || getBlock(Math.floor(player.x), Math.floor(player.y + player.h * 0.5))) {
+  if (getBlock(Math.floor(player.x), Math.floor(player.y)) ||
+      getBlock(Math.floor(player.x), Math.floor(player.y + player.h * 0.5))) {
     player.x -= player.vx * 0.1;
     player.vx = 0;
   }
@@ -137,12 +137,13 @@ function update() {
   camera.y = player.y * TILE_SIZE - canvas.height / 2;
 }
 
-// --- Rysowanie bloków ---
+// --- Rysowanie ---
 function drawBlock(x, y, type) {
   if (!type) return;
   let color = "#654321";
   if (type === "grass") color = "#00aa00";
   if (type === "stone") color = "#777777";
+  if (type === "dirt") color = "#8B4513";
   const px = x * TILE_SIZE - camera.x;
   const py = y * TILE_SIZE - camera.y;
   ctx.fillStyle = color;
@@ -151,13 +152,19 @@ function drawBlock(x, y, type) {
   ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
 }
 
-// --- Niszcz i stawiaj ---
+// --- Zasięg niszczenia i stawiania ---
 canvas.addEventListener("mousedown", e => {
   const rect = canvas.getBoundingClientRect();
   const mx = (e.clientX - rect.left + camera.x) / TILE_SIZE;
   const my = (e.clientY - rect.top + camera.y) / TILE_SIZE;
   const wx = Math.floor(mx);
   const wy = Math.floor(my);
+
+  const dx = Math.abs(wx - player.x);
+  const dy = Math.abs(wy - player.y);
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (distance > 1.5) return; // ograniczenie zasięgu do 1 bloku
 
   if (e.button === 0) { // niszcz
     const block = getBlock(wx, wy);
@@ -215,7 +222,6 @@ function loop() {
 }
 loop();
 
-// --- Start ---
 player.y = SEA_LEVEL - 5;
 player.x = 0;
 </script>
